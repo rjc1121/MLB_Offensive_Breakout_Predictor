@@ -1,0 +1,130 @@
+---
+title: "Random Forest Rookie Breakout Predictor"
+author: "Ryan J. Clark"
+date: "2025-07-18"
+output: html_document
+---
+# Using the Difference in Expected Statistics to Predict Breakout Stars with Random Forest
+
+```{r message=FALSE, warning=FALSE}
+#Loading Packages
+
+library(tidyverse)
+
+library(randomForest)
+
+library(ggplot2)
+
+library(readxl)
+
+library(knitr)
+
+```
+
+### I started by downloading expected statistics for 2023 and OPS+ for 2024
+```{r}
+#Importing Data 
+Offense_2023 <- Offense_2023 <- read_excel("Offense_2023.xlsx", skip = 1)
+
+X2024_Stats <- X2024_Stats <- read_excel("2024_Stats.xlsx", skip = 1)
+
+
+#Standardizing names 
+Offense_2023 <- Offense_2023 %>%
+  separate(`last_name, first_name`, into = c("Last", "First"), sep = ", ") %>%
+  mutate(Player = paste(First, Last)) %>%
+  select(-First, -Last)
+
+#Getting rid of # and *
+
+ X2024_Stats <- X2024_Stats %>% mutate(
+    Player = gsub("[*#]", "", Player),  
+    Player = str_trim(Player)          
+  )
+
+```
+
+### I then selected the required columns from both datasets.
+```{r}
+# Select required data 
+
+OPS_2024 <- X2024_Stats %>% select(Player, Age, Team, `OPS+`)
+
+Offense_2023_Clean <- Offense_2023 %>% select(Player, pa, xbadiff, xslgdiff, wobadiff)
+```
+
+### I merged the two together to have 2024 OPS+ and Age in the Expected dataset
+```{r}
+#Merging 
+
+
+Prediction_Data <- full_join(Offense_2023_Clean, OPS_2024, by = "Player")
+```
+
+### I wanted to use players who were younger and lacking a full season of at bats.
+```{r}
+#Filtering Data to between 100 and 300 PAs, Age >= 27
+
+Prediction_Data_Filtered <- Prediction_Data %>% filter(Age <= 27, pa >= 100, pa <=300) 
+
+Prediction_Data_Filtered <- drop_na(Prediction_Data_Filtered)
+
+```
+
+### Creating the model 
+```{r}
+#Building the Forest 
+set.seed(21)
+rf_model <- randomForest(data = Prediction_Data_Filtered, `OPS+` ~ xbadiff +xslgdiff +wobadiff, importance = TRUE, ntree = 500)
+```
+
+### I then added 2024 expected stats to be used for predicting 2025 OPS+
+```{r}
+#Importing 2024 expected stats 
+ Offense_2024 <-Offense_2024 <- read_excel("Offense_2024.xlsx", skip = 1)
+
+Offense_2024 <- Offense_2024 %>%
+  separate(`last_name, first_name`, into = c("Last", "First"), sep = ", ") %>%
+  mutate(Player = paste(First, Last)) %>%
+  select(-First, -Last)
+
+Offense_2024_Clean <- Offense_2024 %>% select(Player, pa, xbadiff, xslgdiff, wobadiff)
+
+
+Prediction_Data_2024 <- Prediction_Data <- full_join(Offense_2024_Clean, OPS_2024, by = "Player")
+
+Prediction_Data_Filtered_2024 <- Prediction_Data_2024 %>% filter(Age <= 27, pa >= 100, pa <=300) 
+
+Prediction_Data_Filtered_2024 <- drop_na(Prediction_Data_Filtered_2024)
+
+```
+### Adding to new column for Predicted 2025 OPS+
+```{r}
+#Prepping for merging 2024 data 
+
+
+Prediction_Data_Filtered_2024$OPS_Plus_2025_Prediction <- predict(rf_model, newdata = Prediction_Data_Filtered_2024)
+
+```
+
+### Plotting the top 10. I also wanted it to only be players who are rookies in 2024. 
+```{r}
+#Plotting 
+
+breakouts <-Prediction_Data_Filtered_2024 %>% 
+  arrange(desc(OPS_Plus_2025_Prediction))
+ 
+Rookies_2024 <- read_excel("Rookies_2024.xlsx", skip = 1)
+
+rookie_breakouts <- breakouts %>%
+  filter(Player %in% Rookies_2024$Name) %>% 
+  slice(1:10)
+
+ggplot(rookie_breakouts, aes(x = reorder(Player, OPS_Plus_2025_Prediction), y = OPS_Plus_2025_Prediction)) +
+  geom_col(fill = "royalblue") +
+  geom_text(aes(label = round(OPS_Plus_2025_Prediction, 1)), hjust = 1) +
+  coord_flip() +
+  labs(title = "Top 10 Predicted Breakout Rookie Candidates by OPS+",
+       x = "Player", y = "Predicted OPS+") +
+  theme_minimal()
+```
