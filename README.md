@@ -4,3 +4,6 @@ The HTML report includes:
 - Model explanation and feature importance
 - Visualizations of top candidates
 - Rookie vs non-rookie analysis
+
+Check it out here:
+https://rjc1121.github.io/MLB_Offensive_Breakout_Predictor/
