@@ -1,2 +1,6 @@
-I used differences in expected statistics to predict OPS+ using random forest. I used expected data from 2023 to model 2024 OPS+, then applied that to 2025. I filtered between 100 and 300
-plate appearances and age 27 and younger. Only 2024 rookies were included. 
+This project uses a Random Forest model in R to identify potential MLB breakout and bounce back hitters based on differences between expected and actual statcast metrics.
+
+The HTML report includes:
+- Model explanation and feature importance
+- Visualizations of top candidates
+- Rookie vs non-rookie analysis
