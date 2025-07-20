@@ -1,10 +1,10 @@
 ---
-title: "Random Forest Rookie Breakout Predictor"
+title: "Random Forest Breakout/Bounce Back Predictor"
 author: "Ryan J. Clark"
 date: "2025-07-18"
 output: html_document
 ---
-# Using the Difference in Expected Statistics to Predict Breakout Stars with Random Forest
+# Using the Difference in Expected Statistics and Rate Statistics to Predict Breakout Stars with Random Forest
 
 ```{r message=FALSE, warning=FALSE}
 #Loading Packages
@@ -21,7 +21,7 @@ library(knitr)
 
 ```
 
-### I started by downloading expected statistics for 2023 and OPS+ for 2024
+### I started by downloading expected and rate statistics for 2023 and OPS+ for 2024
 ```{r}
 #Importing Data 
 Offense_2023 <- Offense_2023 <- read_excel("Offense_2023.xlsx", skip = 1)
@@ -48,12 +48,12 @@ Offense_2023 <- Offense_2023 %>%
 ```{r}
 # Select required data 
 
-OPS_2024 <- X2024_Stats %>% select(Player, Age, Team, `OPS+`)
+OPS_2024 <- X2024_Stats %>% select(Player, Age, Team, OPS)
 
-Offense_2023_Clean <- Offense_2023 %>% select(Player, pa, xbadiff, xslgdiff, wobadiff)
+Offense_2023_Clean <- Offense_2023 %>% select(Player, pa, xbadiff, xslgdiff, oz_swing_percent, whiff_percent, barrel_batted_rate)
 ```
 
-### I merged the two together to have 2024 OPS+ and Age in the Expected dataset
+### I merged the two together to have 2024 OPS and Age in the stats dataset
 ```{r}
 #Merging 
 
@@ -71,14 +71,16 @@ Prediction_Data_Filtered <- drop_na(Prediction_Data_Filtered)
 
 ```
 
-### Creating the model 
+### Creating the models 
 ```{r}
 #Building the Forest 
 set.seed(21)
-rf_model <- randomForest(data = Prediction_Data_Filtered, `OPS+` ~ xbadiff +xslgdiff +wobadiff, importance = TRUE, ntree = 500)
+rf_model_exp <- randomForest(data = Prediction_Data_Filtered, OPS ~ xbadiff +xslgdiff, importance = TRUE, ntree = 500)
+
+rf_model_rate <- randomForest(data = Prediction_Data_Filtered, OPS ~ oz_swing_percent + whiff_percent + barrel_batted_rate, importance = TRUE, ntree = 500)
 ```
 
-### I then added 2024 expected stats to be used for predicting 2025 OPS+
+### I then added 2024 expected stats to be used for predicting 2025 OPS
 ```{r}
 #Importing 2024 expected stats 
  Offense_2024 <-Offense_2024 <- read_excel("Offense_2024.xlsx", skip = 1)
@@ -88,7 +90,7 @@ Offense_2024 <- Offense_2024 %>%
   mutate(Player = paste(First, Last)) %>%
   select(-First, -Last)
 
-Offense_2024_Clean <- Offense_2024 %>% select(Player, pa, xbadiff, xslgdiff, wobadiff)
+Offense_2024_Clean <- Offense_2024 %>% select(Player, pa, xbadiff, xslgdiff, oz_swing_percent, barrel_batted_rate, whiff_percent)
 
 
 Prediction_Data_2024 <- Prediction_Data <- full_join(Offense_2024_Clean, OPS_2024, by = "Player")
@@ -98,33 +100,113 @@ Prediction_Data_Filtered_2024 <- Prediction_Data_2024 %>% filter(Age <= 27, pa >
 Prediction_Data_Filtered_2024 <- drop_na(Prediction_Data_Filtered_2024)
 
 ```
-### Adding to new column for Predicted 2025 OPS+
+### Adding to new column for Predicted 2025 OPS by Expected Stats
 ```{r}
 #Prepping for merging 2024 data 
 
 
-Prediction_Data_Filtered_2024$OPS_Plus_2025_Prediction <- predict(rf_model, newdata = Prediction_Data_Filtered_2024)
+Prediction_Data_Filtered_2024$OPS_2025_Prediction_Exp <- predict(rf_model_exp, newdata = Prediction_Data_Filtered_2024)
 
 ```
 
-### Plotting the top 10. I also wanted it to only be players who are rookies in 2024. 
+### Plotting the top 10 2024 Rookies by Expected Stats
 ```{r}
 #Plotting 
 
 breakouts <-Prediction_Data_Filtered_2024 %>% 
-  arrange(desc(OPS_Plus_2025_Prediction))
+  arrange(desc(OPS_2025_Prediction_Exp))
  
 Rookies_2024 <- read_excel("Rookies_2024.xlsx", skip = 1)
 
 rookie_breakouts <- breakouts %>%
   filter(Player %in% Rookies_2024$Name) %>% 
+  distinct(Player, .keep_all = TRUE) %>% 
   slice(1:10)
 
-ggplot(rookie_breakouts, aes(x = reorder(Player, OPS_Plus_2025_Prediction), y = OPS_Plus_2025_Prediction)) +
+ggplot(rookie_breakouts, aes(x = reorder(Player, OPS_2025_Prediction_Exp), y = OPS_2025_Prediction_Exp)) +
   geom_col(fill = "royalblue") +
-  geom_text(aes(label = round(OPS_Plus_2025_Prediction, 1)), hjust = 1) +
+  geom_text(aes(label = round(OPS_2025_Prediction_Exp, 3)), hjust = 1) +
   coord_flip() +
-  labs(title = "Top 10 Predicted Breakout Rookie Candidates by OPS+",
-       x = "Player", y = "Predicted OPS+") +
+  labs(title = "Top 10 Predicted Breakout 2025 Rookie Candidates (exp)",
+       x = "Player", y = "Predicted OPS") +
   theme_minimal()
 ```
+
+### Plotting the top 10 2024 Non-rookies by Expected Stats
+```{r}
+non_rookies <- breakouts %>% 
+  filter(!Player %in% Rookies_2024$Name) 
+
+non_rookies_10 <- non_rookies %>% 
+  distinct(Player, .keep_all = TRUE) %>% 
+  slice(1:10)
+
+
+ggplot(non_rookies_10, aes(x = reorder(Player, OPS_2025_Prediction_Exp), y = OPS_2025_Prediction_Exp)) +
+  geom_col(fill = "purple") +
+  geom_text(aes(label = round(OPS_2025_Prediction_Exp, 3)), hjust = 1) +
+  coord_flip() +
+  labs(title = "Top 10 Predicted 2025 Bounce Back Candidates (exp)",
+       x = "Player", y = "Predicted OPS") +
+  theme_minimal()
+```
+
+### Plotting Feature Importance 
+```{r}
+importance_df <- as.data.frame(importance(rf_model_exp))
+importance_df$Feature <- rownames(importance_df)
+rownames(importance_df) <- NULL
+
+kable(importance_df[, c("Feature", "%IncMSE")], digits = 2, caption = "Feature Importance (%IncMSE)")
+```
+
+## Now lets use the model with rate stats
+```{r}
+Prediction_Data_Filtered_2024$OPS_2025_Prediction_Rate <- predict(rf_model_rate, newdata = Prediction_Data_Filtered_2024)
+```
+
+```{r}
+breakouts <-Prediction_Data_Filtered_2024 %>% 
+  arrange(desc(OPS_2025_Prediction_Rate))
+ 
+Rookies_2024 <- read_excel("Rookies_2024.xlsx", skip = 1)
+
+rookie_breakouts <- breakouts %>%
+  filter(Player %in% Rookies_2024$Name) %>% 
+  distinct(Player, .keep_all = TRUE) %>% 
+  slice(1:10)
+
+ggplot(rookie_breakouts, aes(x = reorder(Player, OPS_2025_Prediction_Rate), y = OPS_2025_Prediction_Rate)) +
+  geom_col(fill = "royalblue") +
+  geom_text(aes(label = round(OPS_2025_Prediction_Rate, 3)), hjust = 1) +
+  coord_flip() +
+  labs(title = "Top 10 Predicted 2025 Breakout Rookie Candidates (Rate)",
+       x = "Player", y = "Predicted OPS") +
+  theme_minimal()
+```
+```{r}
+non_rookies <- breakouts %>% 
+  filter(!Player %in% Rookies_2024$Name) 
+
+non_rookies_10 <- non_rookies %>% 
+  distinct(Player, .keep_all = TRUE) %>% 
+  slice(1:10)
+
+ggplot(non_rookies_10, aes(x = reorder(Player, OPS_2025_Prediction_Rate), y = OPS_2025_Prediction_Rate)) +
+  geom_col(fill = "purple") +
+  geom_text(aes(label = round(OPS_2025_Prediction_Rate, 3)), hjust = 1) +
+  coord_flip() +
+  labs(title = "Top 10 Predicted 2025 Bounce Back Candidates (Rate)",
+       x = "Player", y = "Predicted OPS") +
+  theme_minimal()
+
+```
+
+```{r}
+importance_df <- as.data.frame(importance(rf_model_rate))
+importance_df$Feature <- rownames(importance_df)
+rownames(importance_df) <- NULL
+
+kable(importance_df[, c("Feature", "%IncMSE")], digits = 2, caption = "Feature Importance (%IncMSE)")
+```
+
