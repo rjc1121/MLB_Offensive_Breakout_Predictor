@@ -1,4 +1,4 @@
-This project uses a Random Forest model in R to identify potential MLB breakout and bounce back hitters based on differences between expected and actual statcast metrics, as well as rate stats.
+This project uses  Random Forest and Ridge model in R to identify potential MLB breakout and bounce back hitters based on differences between expected and actual statcast metrics, as well as rate stats.
 
 The HTML report includes:
 - Model explanation and feature importance
