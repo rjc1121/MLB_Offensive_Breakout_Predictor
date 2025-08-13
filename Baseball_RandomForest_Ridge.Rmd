@@ -49,7 +49,7 @@ Offense_2024 <- Offense_2024 %>%
 
 OPS_2024 <- Offense_2024 %>% select(Player, player_age, on_base_plus_slg)
 
-Offense_2023_Clean <- Offense_2023 %>% select(Player, pa, xbadiff, xslgdiff, oz_swing_percent, whiff_percent, barrel_batted_rate)
+Offense_2023_Clean <- Offense_2023 %>% select(Player, pa, wobadiff, xslgdiff, oz_swing_percent, whiff_percent, barrel_batted_rate, pull_percent)
 ```
 
 ### I merged the two together to have 2024 OPS in the 2023 in the stats dataset
@@ -75,7 +75,7 @@ Prediction_Data_2023_Filtered <- drop_na(Prediction_Data_2023_Filtered)
 #Building the Forest 
 set.seed(21)
 
-features <- c("xslgdiff", "xbadiff", "whiff_percent", "barrel_batted_rate", "oz_swing_percent")  
+features <- c("xslgdiff", "wobadiff", "whiff_percent", "barrel_batted_rate", "oz_swing_percent", "pull_percent")  
 x_train <- Prediction_Data_2023_Filtered[, features]
 y_train <- Prediction_Data_2023_Filtered$on_base_plus_slg
 
@@ -87,7 +87,7 @@ rf_model <- randomForest(x = x_train, y = y_train, ntree = 500, importance = TRU
 ```{r}
 #Filtering 2024 
 
-Prediction_Data_2024 <- Offense_2024 %>% select(Player, player_age, pa, xbadiff, xslgdiff, oz_swing_percent, barrel_batted_rate, whiff_percent)
+Prediction_Data_2024 <- Offense_2024 %>% select(Player, player_age, pa, wobadiff, xslgdiff, oz_swing_percent, barrel_batted_rate, whiff_percent, pull_percent)
 
 Prediction_Data_2024_Filtered <- Prediction_Data_2024 %>% filter(player_age <= 27, pa >= 100, pa <=300) 
 
@@ -117,13 +117,13 @@ Rookies_2024 <- read_excel("Rookies_2024.xlsx", skip = 1)
 rookie_breakouts <- breakouts %>%
   filter(Player %in% Rookies_2024$Name) %>% 
   distinct(Player, .keep_all = TRUE) %>% 
-  slice(1:10)
+  slice(1:15)
 
 ggplot(rookie_breakouts, aes(x = reorder(Player, Predicted_OPS_2025_RF), y = Predicted_OPS_2025_RF)) +
   geom_col(fill = "royalblue") +
   geom_text(aes(label = round(Predicted_OPS_2025_RF, 3)), hjust = 1) +
   coord_flip() +
-  labs(title = "Top 10 Predicted Breakout 2025 Rookie Candidates",
+  labs(title = "Top 15 Predicted Breakout 2025 Rookie Candidates",
        x = "Player", y = "Predicted OPS") +
   theme_minimal()
 ```
@@ -135,14 +135,14 @@ non_rookies <- breakouts %>%
 
 non_rookies_10 <- non_rookies %>% 
   distinct(Player, .keep_all = TRUE) %>% 
-  slice(1:10)
+  slice(1:15)
 
 
 ggplot(non_rookies_10, aes(x = reorder(Player, Predicted_OPS_2025_RF), y = Predicted_OPS_2025_RF)) +
   geom_col(fill = "purple") +
   geom_text(aes(label = round(Predicted_OPS_2025_RF, 3)), hjust = 1) +
   coord_flip() +
-  labs(title = "Top 10 Predicted 2025 Bounce Back Candidates",
+  labs(title = "Top 15 Predicted 2025 Bounce Back Candidates",
        x = "Player", y = "Predicted OPS") +
   theme_minimal()
 ```
@@ -167,7 +167,7 @@ varImpPlot(rf_model)
 #Building the Model 
 set.seed(21)
 
-x_2023 <- model.matrix(on_base_plus_slg ~ xslgdiff + xbadiff + whiff_percent + barrel_batted_rate + oz_swing_percent, Prediction_Data_2023_Filtered)[, -1]
+x_2023 <- model.matrix(on_base_plus_slg ~ xslgdiff + wobadiff + whiff_percent + barrel_batted_rate + oz_swing_percent + pull_percent, Prediction_Data_2023_Filtered)[, -1]
 
 y_2024 <- Prediction_Data_2023_Filtered$on_base_plus_slg
 
@@ -178,7 +178,7 @@ best_lambda <- cv_ridge$lambda.min
 ### Using the Ridge model to predict 2025 
 ```{r}
 #Predicting 2025 OPS with Ridge 
-x_2024 <- model.matrix(~ xslgdiff + xbadiff + whiff_percent + barrel_batted_rate + oz_swing_percent, Prediction_Data_2024_Filtered)[, -1]
+x_2024 <- model.matrix(~ xslgdiff + wobadiff + whiff_percent + barrel_batted_rate + oz_swing_percent + pull_percent, Prediction_Data_2024_Filtered)[, -1]
 
 pred_2025 <- predict(cv_ridge, s = best_lambda, newx = x_2024)
 
@@ -195,13 +195,13 @@ Rookies_2024 <- read_excel("Rookies_2024.xlsx", skip = 1)
 rookie_breakouts <- breakouts %>%
   filter(Player %in% Rookies_2024$Name) %>% 
   distinct(Player, .keep_all = TRUE) %>% 
-  slice(1:10)
+  slice(1:15)
 
 ggplot(rookie_breakouts, aes(x = reorder(Player, Predicted_OPS_2025_Ridge), y = Predicted_OPS_2025_Ridge)) +
   geom_col(fill = "royalblue") +
   geom_text(aes(label = round(Predicted_OPS_2025_Ridge, 3)), hjust = 1) +
   coord_flip() +
-  labs(title = "Top 10 Predicted Breakout 2025 Rookie Candidates Ridge",
+  labs(title = "Top 15 Predicted Breakout 2025 Rookie Candidates Ridge",
        x = "Player", y = "Predicted OPS") +
   theme_minimal()
 ```
@@ -209,16 +209,16 @@ ggplot(rookie_breakouts, aes(x = reorder(Player, Predicted_OPS_2025_Ridge), y = 
 non_rookies <- breakouts %>% 
   filter(!Player %in% Rookies_2024$Name) 
 
-non_rookies_10 <- non_rookies %>% 
+non_rookies_15 <- non_rookies %>% 
   distinct(Player, .keep_all = TRUE) %>% 
-  slice(1:10)
+  slice(1:15)
 
 
-ggplot(non_rookies_10, aes(x = reorder(Player, Predicted_OPS_2025_Ridge), y = Predicted_OPS_2025_Ridge)) +
+ggplot(non_rookies_15, aes(x = reorder(Player, Predicted_OPS_2025_Ridge), y = Predicted_OPS_2025_Ridge)) +
   geom_col(fill = "purple") +
   geom_text(aes(label = round(Predicted_OPS_2025_Ridge, 3)), hjust = 1) +
   coord_flip() +
-  labs(title = "Top 10 Predicted 2025 Bounce Back Candidates",
+  labs(title = "Top 15 Predicted 2025 Bounce Back Candidates",
        x = "Player", y = "Predicted OPS") +
   theme_minimal()
 ```

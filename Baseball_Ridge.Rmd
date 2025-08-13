@@ -1,0 +1,174 @@
+---
+title: "Ridge Regression Breakout/Bounce Back Predictor"
+author: "Ryan J. Clark"
+date: "2025-07-18"
+output: html_document
+---
+# Using the Difference in Expected Statistics and Rate Statistics to Predict Breakout Stars with Ridge
+
+```{r message=FALSE, warning=FALSE}
+#Loading Packages
+
+library(tidyverse)
+
+library(glmnet)
+
+library(ggplot2)
+
+library(readxl)
+
+library(knitr)
+
+```
+
+### I started by downloading expected and rate statistics for 2023 and OPS for 2024
+```{r}
+#Importing Data 
+Offense_2023 <- Offense_2023 <- read_excel("Offense_2023.xlsx", skip = 1)
+
+Offense_2024 <-  read_excel("Offense_2024.xlsx", skip = 1)
+
+
+#Standardizing names 
+Offense_2023 <- Offense_2023 %>%
+  separate(`last_name, first_name`, into = c("Last", "First"), sep = ", ") %>%
+  mutate(Player = paste(First, Last)) %>%
+  select(-First, -Last)
+
+Offense_2024 <- Offense_2024 %>%
+  separate(`last_name, first_name`, into = c("Last", "First"), sep = ", ") %>%
+  mutate(Player = paste(First, Last)) %>%
+  select(-First, -Last)
+```
+
+### I then selected the required columns from both datasets.
+```{r}
+# Select required data 
+
+OPS_2024 <- Offense_2024 %>% select(Player, player_age, on_base_plus_slg)
+
+Offense_2023_Clean <- Offense_2023 %>% select(Player, pa, xbadiff, xslgdiff, oz_swing_percent, whiff_percent, barrel_batted_rate)
+```
+
+### I merged the two together to have 2024 OPS in the 2023 in the stats dataset
+```{r}
+#Merging 
+
+
+Prediction_Data_2023 <- full_join(Offense_2023_Clean, OPS_2024, by = "Player")
+```
+
+### I wanted to use players who were younger and lacking a full season of at bats.
+```{r}
+#Filtering Data to between 100 and 300 PAs, Age >= 27
+
+Prediction_Data_2023_Filtered <- Prediction_Data_2023 %>% filter(player_age <= 27, pa >= 100, pa <=300) 
+
+Prediction_Data_2023_Filtered <- drop_na(Prediction_Data_2023_Filtered)
+
+```
+
+### Creating the model 
+```{r}
+#Building the ridge
+set.seed(21)
+
+x_2023 <- model.matrix(on_base_plus_slg ~ xslgdiff + xbadiff + whiff_percent + barrel_batted_rate + oz_swing_percent, Prediction_Data_2023_Filtered)[, -1]
+
+y_2024 <- Prediction_Data_2023_Filtered$on_base_plus_slg
+
+cv_ridge <- cv.glmnet(x_2023, y_2024, alpha = 0, nfolds = 10)
+best_lambda <- cv_ridge$lambda.min
+```
+
+### I then added 2024 expected stats to be used for predicting 2025 OPS
+```{r}
+#Filtering 2024 
+
+Prediction_Data_2024 <- Offense_2024 %>% select(Player, player_age, pa, xbadiff, xslgdiff, oz_swing_percent, barrel_batted_rate, whiff_percent)
+
+Prediction_Data_2024_Filtered <- Prediction_Data_2024 %>% filter(player_age <= 27, pa >= 100, pa <=300) 
+
+Prediction_Data_2024_Filtered <- drop_na(Prediction_Data_2024_Filtered)
+
+```
+### Predicting 2025 OPS with the model
+```{r}
+
+x_2024 <- model.matrix(~ xslgdiff + xbadiff + whiff_percent + barrel_batted_rate + oz_swing_percent, Prediction_Data_2024_Filtered)[, -1]
+
+pred_2025 <- predict(cv_ridge, s = best_lambda, newx = x_2024)
+
+Prediction_Data_2024_Filtered$Predicted_OPS_2025_Ridge <- as.vector(pred_2025)
+
+```
+
+### Plotting the top 10 2024 Rookies by Expected Stats
+```{r}
+#Plotting 
+
+breakouts <-Prediction_Data_2024_Filtered %>% 
+  arrange(desc(Predicted_OPS_2025))
+ 
+Rookies_2024 <- read_excel("Rookies_2024.xlsx", skip = 1)
+
+rookie_breakouts <- breakouts %>%
+  filter(Player %in% Rookies_2024$Name) %>% 
+  distinct(Player, .keep_all = TRUE) %>% 
+  slice(1:10)
+
+ggplot(rookie_breakouts, aes(x = reorder(Player, Predicted_OPS_2025), y = Predicted_OPS_2025)) +
+  geom_col(fill = "royalblue") +
+  geom_text(aes(label = round(Predicted_OPS_2025, 3)), hjust = 1) +
+  coord_flip() +
+  labs(title = "Top 10 Predicted Breakout 2025 Rookie Candidates",
+       x = "Player", y = "Predicted OPS") +
+  theme_minimal()
+```
+
+### Plotting the top 10 2024 Non-rookies by Expected Stats
+```{r}
+non_rookies <- breakouts %>% 
+  filter(!Player %in% Rookies_2024$Name) 
+
+non_rookies_10 <- non_rookies %>% 
+  distinct(Player, .keep_all = TRUE) %>% 
+  slice(1:10)
+
+
+ggplot(non_rookies_10, aes(x = reorder(Player, Predicted_OPS_2025), y = Predicted_OPS_2025)) +
+  geom_col(fill = "purple") +
+  geom_text(aes(label = round(Predicted_OPS_2025, 3)), hjust = 1) +
+  coord_flip() +
+  labs(title = "Top 10 Predicted 2025 Bounce Back Candidates",
+       x = "Player", y = "Predicted OPS") +
+  theme_minimal()
+```
+
+### Backtesting Model  
+```{r}
+
+# Predict 2024 OPS using 2023 stats (already trained)
+pred_2024 <- predict(cv_ridge, s = best_lambda, newx = x_2023)
+
+# RMSE
+rmse <- sqrt(mean((pred_2024 - y_2024)^2))
+
+# R²
+r2 <- cor(pred_2024, y_2024)^2
+
+# MAE
+mae <- mean(abs(pred_2024 - y_2024))
+
+# Combine into a simple table
+model_accuracy <- data.frame(
+  Metric = c("RMSE", "R²", "MAE", "Lambda"),
+  Value = c(rmse, r2, mae, best_lambda)
+)
+
+kable(model_accuracy)
+
+
+
+
+
